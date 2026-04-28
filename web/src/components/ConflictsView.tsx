@@ -1,0 +1,279 @@
+import type { Skill, ConflictGroup } from '../hooks/useSkills'
+import { AgentBadge } from './SourceBadge'
+
+interface Props {
+  conflicts: ConflictGroup[]
+  onSkillClick: (skill: Skill) => void
+  onDelete: (skill: Skill) => Promise<void>
+  busy: Set<string>
+  selectMode?: boolean
+  selectedIds?: Set<string>
+  onSelectToggle?: (skill: Skill) => void
+  onBulkDelete?: () => void
+}
+
+export function ConflictsView({ conflicts, onSkillClick, onDelete, busy, selectMode, selectedIds, onSelectToggle, onBulkDelete }: Props) {
+  const total = conflicts.reduce((n, g) => n + g.skills.length, 0)
+  const selectedCount = selectedIds?.size ?? 0
+  const allConflictSkills = conflicts.flatMap((g) => g.skills)
+  const allSelected = allConflictSkills.length > 0 && allConflictSkills.every((s) => selectedIds?.has(s.id))
+  const nonGlobalSkills = allConflictSkills.filter((s) => s.scope !== 'global')
+  const allNonGlobalSelected = nonGlobalSkills.length > 0 && nonGlobalSkills.every((s) => selectedIds?.has(s.id))
+
+  const handleSelectAll = () => {
+    if (!onSelectToggle) return
+    if (allSelected) {
+      allConflictSkills.forEach((skill) => {
+        if (selectedIds?.has(skill.id)) onSelectToggle(skill)
+      })
+    } else {
+      allConflictSkills.forEach((skill) => {
+        if (!selectedIds?.has(skill.id)) onSelectToggle(skill)
+      })
+    }
+  }
+
+  const handleSelectNonGlobal = () => {
+    if (!onSelectToggle) return
+    if (allNonGlobalSelected) {
+      nonGlobalSkills.forEach((skill) => {
+        if (selectedIds?.has(skill.id)) onSelectToggle(skill)
+      })
+    } else {
+      nonGlobalSkills.forEach((skill) => {
+        if (!selectedIds?.has(skill.id)) onSelectToggle(skill)
+      })
+    }
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-6 p-5 rounded-xl border border-[#e8a55a]/40 bg-[#e8a55a]/10">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-semibold text-[#e8a55a] flex items-center gap-2 mb-2">
+              <span>⚠</span>
+              <span>同名 Skill 冲突</span>
+            </h2>
+            <p className="text-sm text-[#3d3d3a] leading-relaxed">
+              多个 Skill 使用同一个名字时,AI 工具(Claude Code / Codex 等)
+              <strong className="text-[#e8a55a] font-semibold"> 无法判断加载哪一个</strong>,
+              常见表现是:调用时加载的不是你期望的版本,或某个 Skill 被静默忽略。
+            </p>
+            <p className="text-sm text-[#3d3d3a] leading-relaxed mt-2">
+              <strong className="text-[#e8a55a] font-semibold">处理方式:</strong>
+              在每组中保留一个主版本,其他的<strong className="text-[#3d3d3a]">移到回收站</strong>(7 天内可恢复)。
+            </p>
+            <p className="text-xs text-[#e8a55a]/80 leading-relaxed mt-2 bg-[#e8a55a]/10 rounded px-2 py-1.5 border border-[#e8a55a]/20">
+              ⓘ 注意:Claude Code 的「禁用」机制是按 <code className="font-mono bg-[#181715] px-1 rounded">skill 名字</code> 生效的,<strong>无法单独禁用某一个副本</strong>(禁用一个等于禁用同名的全部)。所以冲突只能通过删除多余副本来解决。
+            </p>
+          </div>
+          <div className="text-right shrink-0 border-l border-[#e8a55a]/20 pl-4">
+            <div className="text-3xl font-bold text-[#e8a55a] tabular-nums leading-none">{conflicts.length}</div>
+            <div className="text-[11px] uppercase tracking-wider text-[#e8a55a] mt-1">冲突组</div>
+            <div className="text-[11px] text-[#8e8b82] mt-1">共 {total} 个 Skill</div>
+          </div>
+        </div>
+
+        {/* Select mode toolbar */}
+        {selectMode && (
+          <div className="mt-4 pt-4 border-t border-[#e8a55a]/20 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-[#e8a55a] font-medium">
+                已选 {selectedCount} / {total} 个
+              </span>
+              <button
+                onClick={handleSelectNonGlobal}
+                className="text-xs px-2 py-1 rounded bg-[#cc785c]/20 hover:bg-[#cc785c]/30 border border-[#cc785c]/30 text-[#cc785c]"
+              >
+                {allNonGlobalSelected ? '取消非全局' : '选择非全局'}
+              </button>
+              <button
+                onClick={handleSelectAll}
+                className="text-xs text-[#8e8b82] hover:text-[#6c6a64]"
+              >
+                {allSelected ? '取消全选' : '全选'}
+              </button>
+            </div>
+            {selectedCount > 0 && onBulkDelete && (
+              <button
+                onClick={onBulkDelete}
+                className="px-3 py-1.5 rounded-md text-xs font-medium bg-[#c64545]/15 border border-[#c64545]/30 text-[#c64545] hover:bg-[#c64545]/25 transition-colors"
+              >
+                删除所选 ({selectedCount})
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {conflicts.length === 0 && (
+        <div className="text-center py-16 text-[#8e8b82]">
+          <div className="text-4xl mb-3">✨</div>
+          <p className="text-sm">没有同名冲突</p>
+          <p className="text-xs text-[#8e8b82] mt-1">所有 Skill 的名字都是唯一的</p>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {conflicts.map((group) => (
+          <ConflictGroupCard
+            key={group.name}
+            group={group}
+            onSkillClick={onSkillClick}
+            onDelete={onDelete}
+            busy={busy}
+            selectMode={selectMode}
+            selectedIds={selectedIds}
+            onSelectToggle={onSelectToggle}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ConflictGroupCard({
+  group,
+  onSkillClick,
+  onDelete,
+  busy,
+  selectMode,
+  selectedIds,
+  onSelectToggle,
+}: {
+  group: ConflictGroup
+  onSkillClick: (skill: Skill) => void
+  onDelete: (skill: Skill) => Promise<void>
+  busy: Set<string>
+  selectMode?: boolean
+  selectedIds?: Set<string>
+  onSelectToggle?: (skill: Skill) => void
+}) {
+  return (
+    <div className="rounded-xl border border-[#e8a55a]/20 bg-[#efe9de] overflow-hidden">
+      {/* Group header */}
+      <div className="px-4 py-3 border-b border-[#e6dfd8] flex items-center justify-between gap-3 bg-[#e8a55a]/5">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[#e8a55a] shrink-0">⚠</span>
+          <span className="text-sm font-semibold text-[#3d3d3a] truncate">/{group.name}</span>
+          <span className="text-[11px] text-[#8e8b82] shrink-0">·</span>
+          <span className="text-xs text-[#6c6a64] shrink-0">{group.skills.length} 个同名副本</span>
+        </div>
+      </div>
+
+      {/* Rows */}
+      <div className="divide-y divide-[#e6dfd8]">
+        {group.skills.map((skill) => (
+          <ConflictRow
+            key={skill.id}
+            skill={skill}
+            onSkillClick={onSkillClick}
+            onDelete={onDelete}
+            isBusy={busy.has(skill.id)}
+            selectMode={selectMode}
+            selected={selectedIds?.has(skill.id) ?? false}
+            onSelectToggle={onSelectToggle}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ConflictRow({
+  skill,
+  onSkillClick,
+  onDelete,
+  isBusy,
+  selectMode,
+  selected,
+  onSelectToggle,
+}: {
+  skill: Skill
+  onSkillClick: (skill: Skill) => void
+  onDelete: (skill: Skill) => Promise<void>
+  isBusy: boolean
+  selectMode?: boolean
+  selected?: boolean
+  onSelectToggle?: (skill: Skill) => void
+}) {
+  const scopeLabel = skill.scope === 'global' ? '全局' : skill.scope === 'plugin' ? '插件' : skill.projectName || '项目'
+  const lastMod = formatRelative(skill.lastModified)
+
+  return (
+    <div className={`px-4 py-3 flex items-start justify-between gap-3 hover:bg-[#e8e0d2] transition-colors ${isBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+      {/* Checkbox in select mode */}
+      {selectMode && onSelectToggle && (
+        <button
+          onClick={() => onSelectToggle(skill)}
+          className={`mt-0.5 shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
+            selected
+              ? 'bg-[#cc785c] border-[#cc785c]'
+              : 'bg-transparent border-[#8e8b82]'
+          }`}
+        >
+          {selected && (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+        </button>
+      )}
+
+      <div className="flex-1 min-w-0">
+        {/* Title row */}
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <AgentBadge agent={skill.agent} />
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#efe9de] text-[#6c6a64]">
+            {scopeLabel}
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#f5f0e8] text-[#8e8b82]">
+            来源: {skill.source}
+          </span>
+          {lastMod && (
+            <span className="text-[10px] text-[#8e8b82]">修改于 {lastMod}</span>
+          )}
+        </div>
+        {skill.description && (
+          <p className="text-xs text-[#6c6a64] line-clamp-1 mb-1">{skill.description}</p>
+        )}
+        <p className="text-[11px] text-[#8e8b82] truncate font-mono" title={skill.path}>
+          {skill.path}
+        </p>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <button
+          onClick={() => onSkillClick(skill)}
+          className="px-2.5 py-1 rounded-md text-[11px] bg-[#efe9de] hover:bg-[#e8e0d2] text-[#6c6a64] transition-colors"
+        >
+          详情
+        </button>
+        <button
+          onClick={() => onDelete(skill)}
+          disabled={isBusy}
+          className="px-2.5 py-1 rounded-md text-[11px] bg-[#c64545]/10 hover:bg-[#c64545]/20 border border-[#c64545]/30 text-[#c64545] transition-colors disabled:opacity-40"
+        >
+          {isBusy ? '处理中...' : '移到回收站'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function formatRelative(iso: string): string {
+  try {
+    const d = new Date(iso).getTime()
+    const now = Date.now()
+    const min = Math.floor((now - d) / 60_000)
+    if (min < 60) return `${min} 分钟前`
+    const h = Math.floor(min / 60)
+    if (h < 24) return `${h} 小时前`
+    const days = Math.floor(h / 24)
+    if (days < 30) return `${days} 天前`
+    return new Date(iso).toISOString().slice(0, 10)
+  } catch {
+    return ''
+  }
+}
